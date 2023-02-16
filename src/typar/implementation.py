@@ -15,7 +15,7 @@ Stream = Sequence
 
 
 @dataclass(frozen=True)
-class Result(abc.ABC, Generic[T]):
+class Result(Generic[T]):
     """None if the parser failed, otherwise the value and the index of the next token"""
 
     index: int
