@@ -1,5 +1,3 @@
-"""Non-deterministic parsing"""
-
 import abc
 import re
 import typing
