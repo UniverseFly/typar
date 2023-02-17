@@ -1,5 +1,6 @@
 from .implementation import (
     AnyParser,
+    Decl,
     Parser,
     Result,
     Stream,

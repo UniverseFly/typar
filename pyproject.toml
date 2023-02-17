@@ -10,7 +10,7 @@ description = "Fully-typed combinatorial parsing library in Python"
 name = "typar"
 readme = "README.md"
 requires-python = ">=3.10"
-version = "0.0.5"
+version = "0.0.6"
 
 [project.urls]
 "Homepage" = "https://github.com/UniverseFly/typar"
