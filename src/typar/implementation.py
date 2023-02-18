@@ -304,7 +304,7 @@ class String(Parser[str, str]):
             return Result.err(index)
 
 
-@dataclass(frozen=True)
+@dataclass
 class Decl(Generic[Item, T], Parser[Item, T]):
     def __call__(self, stream: Stream[Item], index: int) -> Result[T]:
         raise NotImplementedError
