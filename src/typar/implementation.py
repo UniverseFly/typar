@@ -1,5 +1,6 @@
 import abc
 import re
+import sys
 import typing
 from dataclasses import dataclass, field
 from typing import Callable, Generic, Sequence, TypeVar, cast, no_type_check
@@ -26,6 +27,18 @@ class Result(Generic[T]):
     @staticmethod
     def err(index: int) -> "Result[typing.Any]":
         return Result(index, None)
+
+    def unwrap(self, source: str) -> T:
+        def eprint(*args, **kwargs):
+            print(*args, file=sys.stderr, **kwargs)
+
+        if self.value is None:
+            eprint("Parse error at index", self.index)
+            eprint(source[: self.index])
+            eprint("Unable to parse")
+            eprint(source[self.index :])
+            raise RuntimeError
+        return self.value
 
 
 class Parser(Generic[Item, T]):
@@ -144,7 +157,7 @@ class Times(Generic[Item, T], Parser[Item, list[T]]):
             elif times >= self.min_times:
                 break
             else:
-                return Result.err(index)
+                return Result.err(result.index)
         return Result.ok(index, values)
 
 
@@ -169,11 +182,12 @@ class Any(Generic[Item, T], Parser[Item, T]):
     parsers: Sequence[Parser[Item, T]]
 
     def __call__(self, stream: Stream[Item], index: int) -> Result[T]:
+        result: Result[T] | None = None
         for parser in self.parsers:
             result = parser(stream, index)
             if result.value is not None:
                 return result
-        return Result.err(index)
+        return Result.err(result.index if result is not None else index)
 
 
 @dataclass(frozen=True)
@@ -221,7 +235,7 @@ class Map(Generic[Item, T, U], Parser[Item, U]):
     def __call__(self, stream: Stream[Item], index: int) -> Result[U]:
         result = self.parser(stream, index)
         if result.value is None:
-            return Result.err(index)
+            return Result.err(result.index)
         else:
             return Result.ok(result.index, self.map_fn(result.value))
 
@@ -234,7 +248,7 @@ class Bind(Generic[Item, T, U], Parser[Item, U]):
     def __call__(self, stream: Stream[Item], index: int) -> Result[U]:
         result = self.parser(stream, index)
         if result.value is None:
-            return Result.err(index)
+            return Result.err(result.index)
         next_parser = self.bind_fn(result.value)
         return next_parser(stream, result.index)
 
@@ -247,12 +261,12 @@ class Add(Generic[Item, T, U], Parser[Item, tuple[T, U]]):
     def __call__(self, stream: Stream[Item], index: int) -> Result[tuple[T, U]]:
         lhs_result = self.lhs(stream, index)
         if lhs_result.value is None:
-            return Result.err(index)
+            return Result.err(lhs_result.index)
         else:
             value = lhs_result.value
             rhs_result = self.rhs(stream, lhs_result.index)
             if rhs_result.value is None:
-                return Result.err(lhs_result.index)
+                return Result.err(rhs_result.index)
             else:
                 return Result.ok(
                     rhs_result.index,
