@@ -23,5 +23,5 @@ fulldate = year + dash + month + dash + day << typar.eof()
 print(fulldate.parse("2019-01-01"))
 # Result(index=10, value=(((('2019', '-'), '01'), '-'), '01'))
 print(fulldate.parse("2019-01-01x"))
-# Result(index=0, value=None)
+# Result(index=10, value=<ERR>)
 ```

@@ -10,6 +10,15 @@ Item = TypeVar("Item")
 T = TypeVar("T")
 U = TypeVar("U")
 
+
+# None for a default return value while None indicating failure
+class Err:
+    def __repr__(self) -> str:
+        return "<ERR>"
+
+
+ERR = Err()
+
 Stream = Sequence
 
 
@@ -18,7 +27,7 @@ class Result(Generic[T]):
     """None if the parser failed, otherwise the value and the index of the next token"""
 
     index: int
-    value: T | None
+    value: T | Err
 
     @staticmethod
     def ok(index: int, value: T) -> "Result[T]":
@@ -26,18 +35,19 @@ class Result(Generic[T]):
 
     @staticmethod
     def err(index: int) -> "Result[typing.Any]":
-        return Result(index, None)
+        return Result(index, ERR)
 
     def unwrap(self, source: str) -> T:
         def eprint(*args, **kwargs):
             print(*args, file=sys.stderr, **kwargs)
 
-        if self.value is None:
+        if self.value is ERR:
             eprint("Parse error at index", self.index)
             eprint(source[: self.index])
             eprint("Unable to parse")
             eprint(source[self.index :])
             raise RuntimeError
+        assert not isinstance(self.value, Err)
         return self.value
 
 
@@ -119,15 +129,11 @@ def one_of(accepted: Sequence[Item]) -> Parser[Item, Item]:
     return satisfy(lambda tok: tok in accepted)
 
 
-# Unit for a default return value while None indicating failure
-Unit = tuple[()]
-
-
-def not_followed_by(parser: Parser[Item, T]) -> Parser[Item, Unit]:
+def not_followed_by(parser: Parser[Item, T]) -> Parser[Item, None]:
     return Not(parser)
 
 
-def eof() -> Parser[Item, Unit]:
+def eof() -> Parser[Item, None]:
     return not_followed_by(any_token())
 
 
@@ -150,7 +156,8 @@ class Times(Generic[Item, T], Parser[Item, list[T]]):
         values: list[T] = []
         while times < self.max_times if self.max_times is not None else True:
             result = self.parser(stream, index)
-            if result.value is not None:
+            if result.value is not ERR:
+                assert not isinstance(result.value, Err)
                 values.append(result.value)
                 index = result.index
                 times += 1
@@ -170,9 +177,10 @@ class Seq(Generic[Item, T], Parser[Item, list[T]]):
         values: list[T] = []
         for parser in self.parsers:
             result = parser(stream, index)
-            if result.value is None:
+            if result.value is ERR:
                 return Result.err(result.index)
             index = result.index
+            assert not isinstance(result.value, Err)
             values.append(result.value)
         return Result.ok(index, values)
 
@@ -185,18 +193,18 @@ class Any(Generic[Item, T], Parser[Item, T]):
         result: Result[T] | None = None
         for parser in self.parsers:
             result = parser(stream, index)
-            if result.value is not None:
+            if result.value is not ERR:
                 return result
         return Result.err(result.index if result is not None else index)
 
 
 @dataclass(frozen=True)
-class Not(Generic[Item, T], Parser[Item, Unit]):
+class Not(Generic[Item, T], Parser[Item, None]):
     parser: Parser[Item, T]
 
-    def __call__(self, stream: Stream[Item], index: int) -> Result[Unit]:
+    def __call__(self, stream: Stream[Item], index: int) -> Result[None]:
         result = self.parser(stream, index)
-        return Result.err(index) if result.value is not None else Result.ok(index, ())
+        return Result.err(index) if result.value is not ERR else Result.ok(index, None)
 
 
 @dataclass(frozen=True)
@@ -234,9 +242,10 @@ class Map(Generic[Item, T, U], Parser[Item, U]):
 
     def __call__(self, stream: Stream[Item], index: int) -> Result[U]:
         result = self.parser(stream, index)
-        if result.value is None:
+        if result.value is ERR:
             return Result.err(result.index)
         else:
+            assert not isinstance(result.value, Err)
             return Result.ok(result.index, self.map_fn(result.value))
 
 
@@ -247,8 +256,9 @@ class Bind(Generic[Item, T, U], Parser[Item, U]):
 
     def __call__(self, stream: Stream[Item], index: int) -> Result[U]:
         result = self.parser(stream, index)
-        if result.value is None:
+        if result.value is ERR:
             return Result.err(result.index)
+        assert not isinstance(result.value, Err)
         next_parser = self.bind_fn(result.value)
         return next_parser(stream, result.index)
 
@@ -260,14 +270,16 @@ class Add(Generic[Item, T, U], Parser[Item, tuple[T, U]]):
 
     def __call__(self, stream: Stream[Item], index: int) -> Result[tuple[T, U]]:
         lhs_result = self.lhs(stream, index)
-        if lhs_result.value is None:
+        if lhs_result.value is ERR:
             return Result.err(lhs_result.index)
         else:
+            assert not isinstance(lhs_result.value, Err)
             value = lhs_result.value
             rhs_result = self.rhs(stream, lhs_result.index)
-            if rhs_result.value is None:
+            if rhs_result.value is ERR:
                 return Result.err(rhs_result.index)
             else:
+                assert not isinstance(rhs_result.value, Err)
                 return Result.ok(
                     rhs_result.index,
                     (value, rhs_result.value),
@@ -281,7 +293,7 @@ class Or(Generic[Item, T, U], Parser[Item, T | U]):
 
     def __call__(self, stream: Stream[Item], index: int) -> Result[T | U]:
         lhs = self.lhs(stream, index)
-        if lhs.value is not None:
+        if lhs.value is not ERR:
             return cast(Result[T | U], lhs)
         return cast(Result[T | U], self.rhs(stream, index))
 
